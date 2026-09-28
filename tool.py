@@ -27,14 +27,14 @@ def sample_linkedin_people(api_key, query, size=20):
         raise ValueError("size must be between 1 and 1000")
     payload = {"size": size, "sort": "random", "filter": {"name": "name", "operator": "includes", "value": query}}
     request = Request("https://api.brightdata.com/datasets/search/gd_l1viktl72bvl7bjuj0", data=json.dumps(payload).encode(), headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"})
-    try:
-        with urlopen(request, timeout=45) as response:
-            return json.load(response)
-    except HTTPError as error:
-        detail = error.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"Dataset Search API returned HTTP {error.code}: {detail or error.reason}") from error
-    except URLError as error:
-        raise RuntimeError(f"Dataset Search API request failed: {error.reason}") from error
+    with urlopen(request, timeout=45) as response:
+        return json.load(response)
+
+
+def emit_cli_error(error):
+    status = error.code if isinstance(error, HTTPError) else None
+    print(json.dumps({"error": {"code": "http_error" if status else "network_error", "message": f"Dataset Search request failed{f' with HTTP {status}' if status else ''}; no automatic retry was attempted.", "retryable": False}}), file=sys.stderr)
+    raise SystemExit(1)
 
 
 def main():
@@ -43,7 +43,10 @@ def main():
     if sys.argv[1] == "--live":
         if len(sys.argv) != 3 or not os.getenv("BRIGHT_DATA_API_KEY"):
             raise SystemExit("Set BRIGHT_DATA_API_KEY and provide a name fragment")
-        response = sample_linkedin_people(os.environ["BRIGHT_DATA_API_KEY"], sys.argv[2])
+        try:
+            response = sample_linkedin_people(os.environ["BRIGHT_DATA_API_KEY"], sys.argv[2])
+        except (HTTPError, URLError, TimeoutError, OSError, RuntimeError, ValueError) as error:
+            emit_cli_error(error)
         result = profile_records(response.get("hits", []))
         result["total_hits"] = response.get("total_hits")
         result["sample_cost_estimate_usd"] = estimate_dataset_cost(result["record_count"])

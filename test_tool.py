@@ -45,9 +45,25 @@ class DatasetSamplerTests(unittest.TestCase):
     def test_live_api_errors_have_actionable_message(self):
         from urllib.error import HTTPError
         from tool import sample_linkedin_people
-        with patch("tool.urlopen", side_effect=HTTPError("https://api.brightdata.com", 429, "Too Many Requests", {}, BytesIO(b"rate limited"))):
-            with self.assertRaisesRegex(RuntimeError, "429.*rate limited"):
+        with patch("tool.urlopen", side_effect=HTTPError("https://api.brightdata.com", 429, "Too Many Requests", {}, BytesIO(b"sensitive response"))):
+            with self.assertRaises(HTTPError) as error:
                 sample_linkedin_people("test-key", "engineer")
+            self.assertNotIn("sensitive response", str(error.exception))
+
+    def test_live_cli_errors_are_structured_and_do_not_retry_or_leak_secrets(self):
+        import os
+        import json
+        from contextlib import redirect_stderr
+        from io import StringIO
+        from urllib.error import URLError
+        from tool import main
+        with patch("tool.sample_linkedin_people", side_effect=URLError("secret-token")), patch.dict(os.environ, {"BRIGHT_DATA_API_KEY": "secret-token"}), patch("sys.argv", ["tool.py", "--live", "x"]), redirect_stderr(StringIO()) as error:
+            with self.assertRaises(SystemExit) as exit_error:
+                main()
+        payload = json.loads(error.getvalue())
+        self.assertEqual(exit_error.exception.code, 1)
+        self.assertFalse(payload["error"]["retryable"])
+        self.assertNotIn("secret-token", error.getvalue())
 
 
 if __name__ == "__main__":

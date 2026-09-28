@@ -1,0 +1,5 @@
+[
+  {"name": "Northstar Tools", "country": "US", "industry": "Software", "employees": 84},
+  {"name": "Maple Metrics", "country": "CA", "industry": "Software", "employees": null},
+  {"name": "Harbor Systems", "country": "US", "industry": null, "employees": 240}
+]

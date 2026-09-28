@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -11,7 +12,7 @@ def profile_records(records):
     for field in fields:
         present = sum(row.get(field) not in (None, "", [], {}) for row in records)
         coverage[field] = {"present": present, "missing": len(records) - present, "coverage": round(present / len(records), 3) if records else 0}
-    return {"record_count": len(records), "field_coverage": coverage, "decision_note": "Coverage describes only this returned sample; it is not a guarantee about the full dataset."}
+    return {"record_count": len(records), "field_coverage": coverage, "decision_note": "This random sample is exploratory and not representative. LinkedIn profile data is subject to dataset purpose limitations, platform and dataset terms, and applicable privacy/data-protection rules; sampling grants no permission for reuse. Minimize retention and avoid retaining raw profiles. CLI live mode requests the fixed default of 20 records."}
 
 
 def estimate_dataset_cost(records, dollars_per_thousand=2.5):
@@ -26,8 +27,14 @@ def sample_linkedin_people(api_key, query, size=20):
         raise ValueError("size must be between 1 and 1000")
     payload = {"size": size, "sort": "random", "filter": {"name": "name", "operator": "includes", "value": query}}
     request = Request("https://api.brightdata.com/datasets/search/gd_l1viktl72bvl7bjuj0", data=json.dumps(payload).encode(), headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"})
-    with urlopen(request, timeout=45) as response:
-        return json.load(response)
+    try:
+        with urlopen(request, timeout=45) as response:
+            return json.load(response)
+    except HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(f"Dataset Search API returned HTTP {error.code}: {detail or error.reason}") from error
+    except URLError as error:
+        raise RuntimeError(f"Dataset Search API request failed: {error.reason}") from error
 
 
 def main():

@@ -37,6 +37,18 @@ class DatasetSamplerTests(unittest.TestCase):
         self.assertIn(b'"sort": "random"', request.data)
         self.assertIn(b'"size": 7', request.data)
 
+    def test_profile_marks_sample_exploratory_and_non_representative(self):
+        result = profile_records([{"name": "A"}])
+        self.assertIn("exploratory", result["decision_note"].lower())
+        self.assertIn("not representative", result["decision_note"].lower())
+
+    def test_live_api_errors_have_actionable_message(self):
+        from urllib.error import HTTPError
+        from tool import sample_linkedin_people
+        with patch("tool.urlopen", side_effect=HTTPError("https://api.brightdata.com", 429, "Too Many Requests", {}, BytesIO(b"rate limited"))):
+            with self.assertRaisesRegex(RuntimeError, "429.*rate limited"):
+                sample_linkedin_people("test-key", "engineer")
+
 
 if __name__ == "__main__":
     unittest.main()
